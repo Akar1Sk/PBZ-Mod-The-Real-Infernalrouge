@@ -2,6 +2,21 @@
 
 目的：玩家当前手持 Tang（黑伤及铸魂黑魔伤）时，物理攻击伤害通道与 AngerDamage 通道各乘 1.75，可配置 1 至 10 倍。不是修改背包面板攻击力。
 
+## 项目目录
+
+| 路径 | 用途 |
+| --- | --- |
+| `PBZTangCombat.json` | 当前默认配置：伤害与 AngerDamage 各 1.75 倍，绝技强化 30 秒 |
+| `mod/PBZTangCombat/` | 当前 Mod 源码，安装时复制整个文件夹 |
+| `tests/` | 战斗倍率与绝技时长模拟测试 |
+| `package/` | 按游戏目录结构整理的 PBZModLoader 安装内容 |
+| `release/` | 本地 ZIP 安装包，Git 已忽略 |
+| `archive/experiments/` | 已停用的配置表修改实验及其备份 |
+| `archive/backup-before-ultimate/` | 添加绝技时长功能前的代码与配置备份 |
+| `docs/工作衔接.md` | 开发进度和调试记录 |
+
+`接口参考/` 和可选的 `reference/` 仅供本地开发，Git 已忽略。目录整理保留了 `mod/`、`tests/` 和 `package/` 的相对结构，游戏内安装路径不变。`release/` 中的历史 ZIP 不会因源码整理自动更新。
+
 ## 与参考 Mod 的关系
 
 参考用户提供的 HeiMoShang_1.0.0_Offline_Full 中 Scripts/exit_damage.lua：它通过 UE4SS 的原生回调，对验证过归属及资源名称的大招攻击模块调用 AddModifier，Multiply=1。该参考仅修改特定大招攻击，不代表已经验证所有招式。
@@ -23,7 +38,7 @@ AngerDamage 在参考包说明中对应对敌人的杀气伤害。是否完全�
 
 ## 安装（二选一，只装一份）
 
-PBZModLoader：把 mod/PBZTangCombat 整个文件夹复制到游戏 ProjectPBZ/PBZModLoader/mods/PBZTangCombat，入口 main.js 和 controller.js 应在同一层。已有 PBZModLoader 可用 Alt+F5 重载，或重启游戏。
+PBZModLoader：把 mod/PBZTangCombat 整个文件夹复制到游戏 ProjectPBZ/PBZModLoader/mods/PBZTangCombat，main.js、controller.js 和 ultimate.js 应在同一层。已有 PBZModLoader 可用 Alt+F5 重载，或重启游戏。
 
 PBZModsMenu 内置加载器：把同一文件夹放到 ProjectPBZ/Content/JavaScript/PBZModsMenu/Mods/PBZTangCombat。新增 Mod 后重启游戏；已启用开发热重载时，修改已有脚本可按左 Ctrl+F5。
 
@@ -48,7 +63,7 @@ SDK 声明标注 reflection-generated, not individually call-tested。本版已�
 
 ## 开发资料
 
-reference/ 为从 zoneoflkf/PBZModLoader 下载的接口声明，仅供开发参考，不随游戏 Mod 安装。
+SDK 接口声明来自 zoneoflkf/PBZModLoader。需要时可自行下载到本地 reference/，该目录不纳入 Git，也不随游戏 Mod 安装。
 
 - https://github.com/zoneoflkf/PBZModLoader/blob/main/sdk/types/generated/SGameCombatSystem.d.ts
 - https://github.com/zoneoflkf/PBZModLoader/blob/main/sdk/types/generated/ProjectPBZ.d.ts
