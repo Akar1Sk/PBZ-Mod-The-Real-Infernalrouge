@@ -1,0 +1,8 @@
+{
+  "target": "Tang",
+  "enabled": false,
+  "multipliers": {
+    "Damage.Attack.Target.PhysicalDamage": 1.5,
+    "Damage.Attack.Target.AngerDamage": 1.5
+  }
+}
