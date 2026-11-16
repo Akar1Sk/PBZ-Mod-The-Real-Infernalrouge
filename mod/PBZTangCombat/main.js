@@ -104,7 +104,7 @@ const host={config,context,id:path,sample,verifySample,
         const stable=JSON.stringify(state); if(stable===lastReport)return;
         console.log("[PBZTangCombat] "+stable);
         try {
-            const result={version:"0.2.0-experimental",time:new Date().toISOString(),...state};
+            const result={version:"0.3.0",time:new Date().toISOString(),...state};
             if(UE.EasyCsv.SaveStringToFileWithFullPath(JSON.stringify(result,null,2),reportPath))lastReport=stable;
         }catch(e){console.error("[PBZTangCombat] report write failed: "+String(e));}
     }
