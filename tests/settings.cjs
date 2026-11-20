@@ -1,0 +1,27 @@
+"use strict";
+const assert=require('node:assert/strict');
+const {create,parse,serialize,defaults}=require('../mod/PBZTangCombat/settings.js');
+function env(options={}){
+    const files=new Map([['PBZTangCombat.json',JSON.stringify(options.config||defaults)]]);
+    let descriptor,reloads=0,writes=0,clock=0,pending=null;const reports=[];
+    const ui=create({now:()=>clock,read:n=>files.get(n)??null,write:(n,t)=>{writes++;if(options.failWrite)return false;files.set(n,options.normalize?t.replace(/\r\n/g,'\n'):t);return true;},reload:()=>reloads++,report:r=>reports.push(r)});
+    const menu={push:d=>{descriptor=d;},value:(id,k)=>{assert.equal(id,'PBZTangCombat');return (pending||ui.read())[k];}};
+    return {ui,menu,files,reports,setPending:c=>pending=c,advance:ms=>clock+=ms,get descriptor(){return descriptor;},get reloads(){return reloads;},get writes(){return writes;}};
+}
+exports.run=()=>{
+    const cases=[];const test=(name,fn)=>{fn();cases.push(name);};
+    test('Migrates custom JSON values once and keeps the original JSON',()=>{const c={enabled:false,attackMultiplier:2.35,angerMultiplier:4,ultimateSeconds:72};const e=env({config:c});e.ui.register(e.menu);assert.deepEqual(e.ui.read(),c);assert.deepEqual(JSON.parse(e.files.get('PBZTangCombat.json')),c);e.ui.register(e.menu);assert.equal(e.writes,1);assert.equal(e.reloads,0);});
+    test('UI exposes only toggle and three sliders; no manual save action',()=>{const e=env();e.ui.register(e.menu);assert.equal(e.descriptor.file,'PBZTangCombat.ini');assert.equal(e.descriptor.settings.length,4);for(const s of e.descriptor.settings){assert.equal(s.default,defaults[s.key]);assert(s.label.en&&s.label['zh-Hans']);assert.notEqual(s.type,'action');}assert.equal(e.descriptor.settings[1].step,.05);assert.equal(e.descriptor.settings[3].max,120);});
+    test('Menu On/Off, decimal comma, BOM, CRLF and comments parse',()=>{assert.deepEqual(parse('\uFEFF; test\r\nenabled=Off\r\nattackMultiplier=1,75 ; x\r\nangerMultiplier=2 # x\r\nultimateSeconds=0\r\n'),{enabled:false,attackMultiplier:1.75,angerMultiplier:2,ultimateSeconds:0});});
+    test('Incomplete or invalid file fails rather than resetting values',()=>{assert.throws(()=>parse('enabled=On'));for(const c of [{...defaults,attackMultiplier:Infinity},{...defaults,angerMultiplier:11},{...defaults,ultimateSeconds:.5},{...defaults,ultimateSeconds:121},{...defaults,enabled:'On'}])assert.throws(()=>serialize(c));});
+    test('INI is authoritative after migration and survives module restart',()=>{const e=env();e.ui.register(e.menu);const c={...defaults,attackMultiplier:3,ultimateSeconds:60};e.files.set('PBZTangCombat.ini',serialize(c));assert.deepEqual(e.ui.read(),c);const next=create({read:n=>e.files.get(n)??null});assert.deepEqual(next.read(),c);});
+    test('Save callback reloads only while alive and only with valid saved values',()=>{const e=env();e.ui.register(e.menu);e.descriptor.onChange();assert.equal(e.reloads,1);e.files.set('PBZTangCombat.ini','enabled=On');assert.throws(()=>e.descriptor.onChange());assert.equal(e.reloads,1);e.ui.stop();e.descriptor.onChange();assert.equal(e.reloads,1);assert(e.descriptor.check().enabled);});
+    test('Failed migration never registers or requests reload; legacy config still works',()=>{const e=env({failWrite:true});e.ui.register(e.menu);assert.equal(e.descriptor,undefined);assert.equal(e.reloads,0);assert.equal(e.reports[0].status,'menu-error');assert.deepEqual(e.ui.read(),defaults);});
+    test('Absent menu does not change files; late menu gets registered',()=>{const e=env();e.ui.register(undefined);e.ui.register([]);assert.equal(e.writes,0);e.ui.register(e.menu);assert(e.descriptor);});
+    test('Missed callback: file change triggers one reload, unchanged polling never loops',()=>{const e=env();e.ui.register(e.menu);e.files.set('PBZTangCombat.ini',serialize({...defaults,angerMultiplier:2}));e.ui.poll();e.ui.poll();assert.equal(e.reloads,1);});
+    test('Failed menu save: stable pending values persist through own writer with normalized newlines',()=>{const e=env({normalize:true});e.ui.register(e.menu);const c={...defaults,attackMultiplier:3,ultimateSeconds:45};e.setPending(c);e.ui.poll();e.advance(749);e.ui.poll();assert.equal(e.reloads,0);e.advance(1);e.ui.poll();assert.deepEqual(e.ui.read(),c);assert.equal(e.reloads,1);e.ui.poll();assert.equal(e.reloads,1);assert.equal(e.reports.at(-1).status,'menu-write-verified');});
+    test('Dragging changes resets debounce; failed writes never report successful reload',()=>{const e=env();e.ui.register(e.menu);e.setPending({...defaults,attackMultiplier:2});e.ui.poll();e.advance(500);e.setPending({...defaults,attackMultiplier:3});e.ui.poll();e.advance(500);e.ui.poll();assert.equal(e.reloads,0);e.advance(250);e.ui.poll();assert.equal(e.reloads,1);const f=env({failWrite:true});f.files.set('PBZTangCombat.ini',serialize(defaults));f.ui.register(f.menu);f.setPending({...defaults,attackMultiplier:4});f.ui.poll();f.advance(800);f.ui.poll();assert.equal(f.reloads,0);assert.equal(f.reports.at(-1).status,'settings-watch-error');});
+    test('Restart from persisted settings creates no reload loop; stopped watcher does nothing',()=>{const e=env();e.ui.register(e.menu);e.ui.poll();assert.equal(e.reloads,0);e.ui.stop();e.files.set('PBZTangCombat.ini',serialize({...defaults,attackMultiplier:6}));e.ui.poll();assert.equal(e.reloads,0);});
+    return {passed:cases.length,cases};
+};
+if(require.main===module)console.log(exports.run());

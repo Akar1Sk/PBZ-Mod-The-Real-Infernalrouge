@@ -8,7 +8,7 @@ const channels = {
     physical:"Damage.Attack.Target.PhysicalDamage", anger:"Damage.Attack.Target.AngerDamage",
     element:"Damage.Attack.Target.ElementDamage", deflect:"Damage.Attack.Target.DeflectAngerDamage"
 };
-let lastReport="", timer, stopped=false;
+let lastReport="", timer, stopped=false, reloadRequested=false, reloadFailed=false,reloadReason="";
 function need(value, message) {if (!value) throw Error(message); return value;}
 function valid(o) {return !!o && K.IsValid(o);}
 function tag(name) {const t=new UE.GameplayTag(); t.TagName=name; return t;}
@@ -18,8 +18,7 @@ function textFile(path) {
     return String(P.$unref(ref)).replace(/^\uFEFF/,"");
 }
 function config() {
-    const text=textFile(root+"PBZTangCombat.json");
-    const c=text ? JSON.parse(text) : {enabled:false,attackMultiplier:1.5,angerMultiplier:1.5};
+    const c=settings.read();
     need(typeof c.enabled==="boolean", "enabled must be boolean");
     for(const key of ["attackMultiplier","angerMultiplier"]) need(typeof c[key]==="number" && Number.isFinite(c[key]) && c[key]>=1 && c[key]<=10,key+" must be between 1 and 10");
     if(c.enabled) {
@@ -104,17 +103,26 @@ const host={config,context,id:path,sample,verifySample,
         const stable=JSON.stringify(state); if(stable===lastReport)return;
         console.log("[PBZTangCombat] "+stable);
         try {
-            const result={version:"0.2.0-experimental",time:new Date().toISOString(),...state};
+            const result={version:"0.4.3",time:new Date().toISOString(),...state};
             if(UE.EasyCsv.SaveStringToFileWithFullPath(JSON.stringify(result,null,2),reportPath))lastReport=stable;
         }catch(e){console.error("[PBZTangCombat] report write failed: "+String(e));}
     }
 };
-const controller=require("./controller").create(host);
+const settings=require("./settings").create({
+    read:name=>textFile(root+name),
+    write:(name,text)=>UE.EasyCsv.SaveStringToFileWithFullPath(text,root+name),
+    reload:reason=>{reloadRequested=true;reloadReason=reason;},
+    report:state=>{
+        console.log("[PBZTangCombat UI] "+JSON.stringify(state));
+        try{UE.EasyCsv.SaveStringToFileWithFullPath(JSON.stringify({version:"0.4.3",time:new Date().toISOString(),...state},null,2),K.ConvertToAbsolutePath(K.GetProjectSavedDirectory()+"PBZTangUI-report.json"));}catch(e){console.error(String(e));}
+    }
+});
+let controller=require("./controller").create(host);
 let ultimateReport="";
-const ultimate=require("./ultimate").create({
+const ultimateHost={
     valid,context,
     config:()=>{
-        const raw=textFile(root+"PBZTangCombat.json"), c=raw?JSON.parse(raw):{};
+        const c=settings.read();
         return {enabled:c.enabled===true,seconds:c.ultimateSeconds===undefined?0:c.ultimateSeconds};
     },
     load:()=>{
@@ -129,9 +137,45 @@ const ultimate=require("./ultimate").create({
             if(UE.EasyCsv.SaveStringToFileWithFullPath(JSON.stringify({time:new Date().toISOString(),...state},null,2),K.ConvertToAbsolutePath(K.GetProjectSavedDirectory()+"PBZTangUltimate-report.json")))ultimateReport=text;
         }catch(e){console.error(String(e));}
     }
-});
-function tick(){if(stopped)return;controller.tick();ultimate.tick();if(!stopped)timer=setTimeout(tick,250);}
-exports.stop=function(){stopped=true;if(timer!==undefined)clearTimeout(timer);try{controller.stop();}finally{ultimate.stop();}};
+};
+let ultimate=require("./ultimate").create(ultimateHost);
+function stopEffects(){
+    const errors=[];
+    try{controller.stop();}catch(e){errors.push(String(e));}
+    try{ultimate.stop();}catch(e){errors.push(String(e));}
+    if(errors.length)throw Error(errors.join("; "));
+}
+function reloadReport(state){
+    console.log("[PBZTangCombat Reload] "+JSON.stringify(state));
+    try{UE.EasyCsv.SaveStringToFileWithFullPath(JSON.stringify({version:"0.4.3",time:new Date().toISOString(),...state},null,2),K.ConvertToAbsolutePath(K.GetProjectSavedDirectory()+"PBZTangReload-report.json"));}catch(e){console.error(String(e));}
+}
+function tick(){
+    if(stopped)return;
+    try{
+        settings.register(globalThis.PBZModsMenu);
+        settings.poll();
+        if(reloadRequested){
+            reloadRequested=false;
+            const runtime=globalThis.__PBZModsMenuRuntime;
+            let accepted=false,reason="Targeted loader API unavailable";
+            try{if(runtime&&typeof runtime.reloadMod==="function"){accepted=runtime.reloadMod("PBZTangCombat")===true;reason="Loader declined (busy or reload limit)";}}catch(e){reason=String(e);}
+            if(accepted){reloadReport({status:"loader-reload-requested",trigger:reloadReason,config:settings.read()});return;}
+            // Other loaders or the 64-reload session limit: restart our effects in place.
+            reloadFailed=true;
+            stopEffects();
+            controller=require("./controller").create(host);
+            ultimate=require("./ultimate").create(ultimateHost);
+            reloadFailed=false;
+            reloadReport({status:"effects-reloaded",trigger:reloadReason,fallbackReason:reason,config:settings.read()});
+            host.report({status:"settings-hot-reloaded"});
+        }
+        if(reloadFailed)return;
+        controller.tick();ultimate.tick();
+    }catch(e){host.report({status:"settings-reload-failed",error:String(e)});}
+    finally{if(!stopped)timer=setTimeout(tick,250);}
+}
+exports.stop=function(){stopped=true;settings.stop();if(timer!==undefined)clearTimeout(timer);stopEffects();};
 exports.ready=true;
 host.report({status:"loaded-awaiting-local-Tang"});
+settings.register(globalThis.PBZModsMenu);
 timer=setTimeout(tick,1000);

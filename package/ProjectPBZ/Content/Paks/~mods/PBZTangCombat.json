@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "attackMultiplier": 1.75,
-  "angerMultiplier": 1.75,
+  "attackMultiplier": 1.25,
+  "angerMultiplier": 1.25,
   "ultimateSeconds": 30
 }
