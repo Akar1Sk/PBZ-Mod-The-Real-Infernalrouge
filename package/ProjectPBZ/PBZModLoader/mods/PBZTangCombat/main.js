@@ -103,18 +103,20 @@ const host={config,context,id:path,sample,verifySample,
         const stable=JSON.stringify(state); if(stable===lastReport)return;
         console.log("[PBZTangCombat] "+stable);
         try {
-            const result={version:"0.4.3",time:new Date().toISOString(),...state};
+            const result={version:"0.4.4",time:new Date().toISOString(),...state};
             if(UE.EasyCsv.SaveStringToFileWithFullPath(JSON.stringify(result,null,2),reportPath))lastReport=stable;
         }catch(e){console.error("[PBZTangCombat] report write failed: "+String(e));}
     }
 };
+const settingsSession=globalThis.__PBZTangCombatSettingsV1||(globalThis.__PBZTangCombatSettingsV1={});
 const settings=require("./settings").create({
+    session:settingsSession,
     read:name=>textFile(root+name),
     write:(name,text)=>UE.EasyCsv.SaveStringToFileWithFullPath(text,root+name),
     reload:reason=>{reloadRequested=true;reloadReason=reason;},
     report:state=>{
         console.log("[PBZTangCombat UI] "+JSON.stringify(state));
-        try{UE.EasyCsv.SaveStringToFileWithFullPath(JSON.stringify({version:"0.4.3",time:new Date().toISOString(),...state},null,2),K.ConvertToAbsolutePath(K.GetProjectSavedDirectory()+"PBZTangUI-report.json"));}catch(e){console.error(String(e));}
+        try{UE.EasyCsv.SaveStringToFileWithFullPath(JSON.stringify({version:"0.4.4",time:new Date().toISOString(),...state},null,2),K.ConvertToAbsolutePath(K.GetProjectSavedDirectory()+"PBZTangUI-report.json"));}catch(e){console.error(String(e));}
     }
 });
 let controller=require("./controller").create(host);
@@ -147,7 +149,7 @@ function stopEffects(){
 }
 function reloadReport(state){
     console.log("[PBZTangCombat Reload] "+JSON.stringify(state));
-    try{UE.EasyCsv.SaveStringToFileWithFullPath(JSON.stringify({version:"0.4.3",time:new Date().toISOString(),...state},null,2),K.ConvertToAbsolutePath(K.GetProjectSavedDirectory()+"PBZTangReload-report.json"));}catch(e){console.error(String(e));}
+    try{UE.EasyCsv.SaveStringToFileWithFullPath(JSON.stringify({version:"0.4.4",time:new Date().toISOString(),...state},null,2),K.ConvertToAbsolutePath(K.GetProjectSavedDirectory()+"PBZTangReload-report.json"));}catch(e){console.error(String(e));}
 }
 function tick(){
     if(stopped)return;

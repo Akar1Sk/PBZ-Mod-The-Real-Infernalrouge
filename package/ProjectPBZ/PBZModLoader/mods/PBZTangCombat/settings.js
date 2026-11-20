@@ -33,9 +33,11 @@ exports.parse=parse;
 exports.serialize=serialize;
 exports.create=function(host){
     let registered=null,stopped=false,lastError="",observed=null,candidate=null;
+    // Shared by module instances in this game session only. Not a backup or save file.
+    const session=host.session||{};
     const fingerprint=c=>JSON.stringify(keys.map(k=>c[k]));
     const now=()=>host.now?host.now():Date.now();
-    function read(){
+    function readDisk(){
         const ini=host.read("PBZTangCombat.ini");
         if(ini!==null)return parse(ini);
         const json=host.read("PBZTangCombat.json");
@@ -43,17 +45,30 @@ exports.create=function(host){
         // Preserve the old meaning of an absent duration setting.
         return {...c,ultimateSeconds:c.ultimateSeconds===undefined?0:c.ultimateSeconds};
     }
+    function read(){
+        const disk=readDisk(),accepted=session.accepted;
+        if(accepted){
+            const key=fingerprint(disk);
+            if(key===fingerprint(accepted.values))delete session.accepted;
+            else if(accepted.staleKeys.includes(key))return {...accepted.values};
+            else delete session.accepted; // A distinct external edit takes precedence.
+        }
+        return disk;
+    }
+    function acceptWrite(desired,previousDiskKey){
+        const old=session.accepted;
+        const staleKeys=[...(old?old.staleKeys:[]),previousDiskKey,...(old?[fingerprint(old.values)]:[])];
+        session.accepted={values:{...desired},staleKeys:[...new Set(staleKeys)].slice(-64)};
+    }
     function register(menu){
         if(stopped||!menu||typeof menu.push!=="function"||Array.isArray(menu)||menu===registered)return;
         try{
             if(host.read("PBZTangCombat.ini")===null){
                 const initial=validate(read());
                 if(!host.write("PBZTangCombat.ini",serialize(initial)))throw Error("Cannot create settings file");
-                const saved=read();
-                if(keys.some(k=>saved[k]!==initial[k]))throw Error("Settings file readback differs");
             }else validate(read());
             observed=fingerprint(validate(read()));
-            menu.push({id:"PBZTangCombat",version:"0.4.3",file:"PBZTangCombat.ini",
+            menu.push({id:"PBZTangCombat",version:"0.4.4",file:"PBZTangCombat.ini",
                 title:label("Hei Mo Shang / Tang","黑伤 / 黑魔伤"),
                 description:label("Changes save and reload this mod automatically. Duration affects the next cast.","调整后自动保存并热重载本模组。绝技时长从下一次施放生效。"),
                 settings:[
@@ -79,17 +94,20 @@ exports.create=function(host){
         try{
             let saved=validate(read()),key=fingerprint(saved);
             // Public value() includes pending edits even when the menu's own write failed.
-            // Wait for a stable selection, then verify semantic values instead of byte-identical text.
+            // The user requested write-then-reload without a readback gate.
             if(registered&&typeof registered.value==="function"){
                 const desired=validate(Object.fromEntries(keys.map(k=>[k,registered.value("PBZTangCombat",k)])));
                 const wanted=fingerprint(desired);
                 if(wanted===key)candidate=null;
                 else if(!candidate||candidate.key!==wanted)candidate={key:wanted,since:now()};
                 else if(now()-candidate.since>=750){
+                    const previousDiskKey=fingerprint(readDisk());
                     const result=host.write("PBZTangCombat.ini",serialize(desired));
-                    saved=validate(read());key=fingerprint(saved);
-                    if(key!==wanted)throw Error("Menu values were not saved; writer returned "+String(result));
-                    host.report({status:"menu-write-verified",config:saved,writerResult:result});
+                    if(result!==true)throw Error("Settings write failed; writer returned "+String(result));
+                    // Do not read the file here: pass selected values to the replacement instance.
+                    acceptWrite(desired,previousDiskKey);
+                    saved={...desired};key=wanted;
+                    host.report({status:"menu-write-accepted",config:saved,writerResult:result,readbackVerification:"skipped-by-user-request"});
                     candidate=null;
                 }
             }
